@@ -1,0 +1,103 @@
+/* ============================================================
+   Chat Auth Application - Black & White Minimal Theme
+   ============================================================ */
+
+/* === Root Background === */
+.root-dark {
+    -fx-background-color: #000000;
+}
+
+/* === Card Container === */
+.card-dark {
+    -fx-background-color: #000000;
+    -fx-padding: 40 36 32 36;
+}
+
+/* === Title === */
+.title-dark {
+    -fx-font-family: "Segoe UI", Arial, sans-serif;
+    -fx-font-size: 30px;
+    -fx-text-fill: #FFFFFF;
+    -fx-font-weight: bold;
+}
+
+/* === Subtitle === */
+.subtitle-dark {
+    -fx-font-family: "Segoe UI", Arial, sans-serif;
+    -fx-font-size: 14px;
+    -fx-text-fill: #A1A1AA;
+}
+
+/* === Input Fields === */
+.input-dark {
+    -fx-background-color: #000000;
+    -fx-border-color: #FFFFFF;
+    -fx-border-width: 1.5;
+    -fx-border-radius: 16;
+    -fx-background-radius: 16;
+    -fx-padding: 12 18 12 18;
+    -fx-font-family: "Segoe UI", Arial, sans-serif;
+    -fx-font-size: 15px;
+    -fx-text-fill: #FFFFFF;
+    -fx-prompt-text-fill: #A1A1AA;
+    -fx-pref-height: 50;
+}
+
+.input-dark:focused {
+    -fx-border-color: #FFFFFF;
+    -fx-border-width: 2;
+    -fx-background-color: #0A0A0A;
+}
+
+.input-dark:hover {
+    -fx-background-color: #0A0A0A;
+}
+
+/* === Primary Button (White bg, black text) === */
+.btn-primary-dark {
+    -fx-background-color: #FFFFFF;
+    -fx-text-fill: #000000;
+    -fx-font-family: "Segoe UI", Arial, sans-serif;
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 16;
+    -fx-border-radius: 16;
+    -fx-pref-height: 50;
+    -fx-cursor: hand;
+}
+
+.btn-primary-dark:hover {
+    -fx-background-color: #E5E7EB;
+}
+
+.btn-primary-dark:pressed {
+    -fx-background-color: #D1D5DB;
+}
+
+/* === Link Button === */
+.btn-link-dark {
+    -fx-background-color: transparent;
+    -fx-text-fill: #D4D4D8;
+    -fx-font-family: "Segoe UI", Arial, sans-serif;
+    -fx-font-size: 13px;
+    -fx-font-weight: 600;
+    -fx-cursor: hand;
+    -fx-padding: 4 0 4 0;
+    -fx-border-color: transparent;
+}
+
+.btn-link-dark:hover {
+    -fx-text-fill: #FFFFFF;
+    -fx-underline: true;
+}
+
+.btn-link-dark:pressed {
+    -fx-text-fill: #A1A1AA;
+}
+
+/* === Footer text === */
+.footer-text {
+    -fx-font-family: "Segoe UI", Arial, sans-serif;
+    -fx-font-size: 11px;
+    -fx-text-fill: #71717A;
+}
