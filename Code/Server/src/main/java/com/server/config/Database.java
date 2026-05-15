@@ -1,4 +1,4 @@
-package com.server;
+package com.server.config;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -14,7 +14,7 @@ public class Database {
     private static final HikariDataSource dataSource;
 
     static {
-        Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
+        Dotenv dotenv = Dotenv.configure().directory("./Code/Server").ignoreIfMissing().load();
 
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(dotenv.get("DB_URL"));
