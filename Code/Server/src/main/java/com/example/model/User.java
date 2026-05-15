@@ -6,7 +6,6 @@ public class User {
     private String email;
     private String password;
 
-    // TODO: Thêm Constructor
     public User() {}
 
     public User(String username, String email, String password) {
@@ -15,7 +14,6 @@ public class User {
         this.password = password;
     }
 
-    // TODO: Thêm các Getter và Setter
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
 
