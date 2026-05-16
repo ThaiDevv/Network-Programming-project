@@ -1,3 +1,4 @@
+import com.google.gson.JsonObject;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -7,6 +8,12 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.stage.Stage;
 
+/**
+ * Giao diện chat chính — đã tích hợp WebSocket realtime.
+ *
+ * Khi ChatView được khởi tạo, nó nhận userId và conversationId,
+ * sau đó kết nối WebSocket và lắng nghe tin nhắn mới.
+ */
 public class ChatView {
 
     private final BorderPane root;
@@ -14,6 +21,15 @@ public class ChatView {
     private VBox messagesBox;
     private VBox contactList;
     private TextField messageInput;
+    private ScrollPane scrollMessages;
+
+    // WebSocket client cho realtime messaging
+    private ChatWebSocketClient wsClient;
+    private final long currentUserId;
+    private long currentConversationId;
+
+    // Typing indicator label
+    private Label typingLabel;
 
     private static final String BG_BLACK = "#000000";
     private static final String PANEL_DARK = "#111111";
@@ -24,15 +40,143 @@ public class ChatView {
     private static final String INPUT_BORDER = "#444444";
     private static final String ACCENT = "#7c5cfc";
 
-    public ChatView(Stage stage) {
+    /**
+     * Constructor mới: nhận userId để kết nối WebSocket.
+     * conversationId được set khi người dùng chọn một cuộc trò chuyện.
+     */
+    public ChatView(Stage stage, long currentUserId) {
         this.stage = stage;
+        this.currentUserId = currentUserId;
+        this.currentConversationId = -1; // chưa chọn conversation nào
+
         root = new BorderPane();
         root.setStyle("-fx-background-color: " + BG_BLACK + ";");
 
         root.setLeft(createLeftPanel());
         root.setCenter(createCenterPanel());
         root.setRight(createRightPanel());
+
+        // Kết nối WebSocket
+        connectWebSocket();
     }
+
+    /**
+     * Constructor cũ (giữ tương thích) — dùng userId mặc định = 0.
+     */
+    public ChatView(Stage stage) {
+        this(stage, 0);
+    }
+
+    // ─────────────────── WebSocket Integration ───────────────────
+
+    /**
+     * Khởi tạo và kết nối WebSocket client đến server.
+     */
+    private void connectWebSocket() {
+        String wsUrl = resolveWsUrl();
+        wsClient = new ChatWebSocketClient(wsUrl, currentUserId);
+
+        // Callback khi nhận tin nhắn mới từ server
+        wsClient.setOnNewMessage(this::onNewMessageReceived);
+
+        // Callback khi có người đang gõ
+        wsClient.setOnUserTyping(this::onUserTyping);
+
+        // Callback khi kết nối thành công
+        wsClient.setOnConnected(() -> {
+            System.out.println("WebSocket connected for user " + currentUserId);
+        });
+
+        // Callback khi mất kết nối
+        wsClient.setOnDisconnected(reason -> {
+            System.out.println("WebSocket disconnected: " + reason);
+        });
+
+        // Callback khi có lỗi
+        wsClient.setOnError(error -> {
+            System.err.println("WebSocket error: " + error);
+        });
+
+        wsClient.connectAsync();
+    }
+
+    /**
+     * Xử lý khi nhận được tin nhắn mới qua WebSocket.
+     * Chỉ hiển thị nếu tin nhắn thuộc conversation đang mở.
+     */
+    private void onNewMessageReceived(JsonObject json) {
+        long conversationId = json.get("conversationId").getAsLong();
+        long senderId = json.get("senderId").getAsLong();
+        String content = json.get("content").getAsString();
+
+        // Chỉ hiển thị nếu đang ở đúng conversation
+        if (conversationId == currentConversationId) {
+            // Ẩn typing indicator
+            if (typingLabel != null) {
+                typingLabel.setVisible(false);
+            }
+
+            if (senderId == currentUserId) {
+                addSentMessage(content);
+            } else {
+                addReceivedMessage(content);
+            }
+            scrollToBottom();
+        }
+
+        // TODO: Cập nhật last message preview trên contact list
+    }
+
+    /**
+     * Xử lý khi có người đang gõ trong conversation hiện tại.
+     */
+    private void onUserTyping(JsonObject json) {
+        long conversationId = json.get("conversationId").getAsLong();
+        if (conversationId == currentConversationId && typingLabel != null) {
+            typingLabel.setText("Đang gõ...");
+            typingLabel.setVisible(true);
+
+            // Tự ẩn sau 3 giây
+            new Thread(() -> {
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException ignored) {}
+                javafx.application.Platform.runLater(() -> typingLabel.setVisible(false));
+            }).start();
+        }
+    }
+
+    /**
+     * Cuộn xuống cuối danh sách tin nhắn.
+     */
+    private void scrollToBottom() {
+        javafx.application.Platform.runLater(() -> {
+            scrollMessages.setVvalue(1.0);
+        });
+    }
+
+    /**
+     * Chuyển conversation đang active.
+     */
+    public void setCurrentConversation(long conversationId) {
+        this.currentConversationId = conversationId;
+        // Xóa tin nhắn cũ trên UI
+        messagesBox.getChildren().clear();
+        // TODO: Load lịch sử tin nhắn từ HTTP API (GET /api/messages?conversationId=...)
+    }
+
+    /**
+     * Xác định WebSocket URL dựa trên env hoặc mặc định localhost.
+     */
+    private String resolveWsUrl() {
+        String envUrl = System.getenv("CHATAPP_WS_URL");
+        if (envUrl != null && !envUrl.isBlank()) return envUrl;
+        String propUrl = System.getProperty("chatapp.ws.url");
+        if (propUrl != null && !propUrl.isBlank()) return propUrl;
+        return "ws://localhost:8887";
+    }
+
+    // ─────────────────── UI Components (giữ nguyên giao diện cũ) ───────────────────
 
     private VBox createLeftPanel() {
         VBox panel = new VBox(10);
@@ -183,10 +327,11 @@ public class ChatView {
 
         chatHeader.getChildren().addAll(headerAvatar, headerInfo, spacer, actions);
 
+        // Vùng hiển thị tin nhắn
         messagesBox = new VBox(12);
         messagesBox.setPadding(new Insets(20, 24, 20, 24));
 
-        ScrollPane scrollMessages = new ScrollPane(messagesBox);
+        scrollMessages = new ScrollPane(messagesBox);
         scrollMessages.setFitToWidth(true);
         scrollMessages.setStyle("""
                 -fx-background: %s;
@@ -195,13 +340,17 @@ public class ChatView {
                 """.formatted(BG_BLACK, BG_BLACK));
         VBox.setVgrow(scrollMessages, Priority.ALWAYS);
 
-        addReceivedMessage("Hi, there! \uD83D\uDC4B");
-        addSentMessage("git add .");
-        addSentMessage("git commit -m \"fix json\"");
-        addSentMessage("git push origin main --force");
-        addReceivedMessage("Committed \u2705");
-        addReceivedMessage("...");
+        // Typing indicator
+        typingLabel = new Label("Đang gõ...");
+        typingLabel.setVisible(false);
+        typingLabel.setPadding(new Insets(4, 24, 4, 24));
+        typingLabel.setStyle("""
+                -fx-font-size: 12px;
+                -fx-text-fill: %s;
+                -fx-font-style: italic;
+                """.formatted(TEXT_MUTED));
 
+        // Thanh nhập tin nhắn
         HBox inputBar = new HBox(12);
         inputBar.setAlignment(Pos.CENTER);
         inputBar.setPadding(new Insets(16, 24, 16, 24));
@@ -239,6 +388,13 @@ public class ChatView {
         messageInput.setPrefHeight(48);
         HBox.setHgrow(messageInput, Priority.ALWAYS);
 
+        // Gửi typing indicator khi người dùng đang gõ
+        messageInput.textProperty().addListener((obs, oldVal, newVal) -> {
+            if (wsClient != null && wsClient.isConnected() && currentConversationId > 0) {
+                wsClient.sendTyping(currentConversationId);
+            }
+        });
+
         Button sendBtn = new Button("G\u1eedi");
         sendBtn.setStyle("""
                 -fx-background-color: %s;
@@ -253,7 +409,7 @@ public class ChatView {
         messageInput.setOnAction(e -> sendMessage());
 
         inputBar.getChildren().addAll(attachBtn, messageInput, sendBtn);
-        panel.getChildren().addAll(chatHeader, scrollMessages, inputBar);
+        panel.getChildren().addAll(chatHeader, scrollMessages, typingLabel, inputBar);
         return panel;
     }
 
@@ -324,11 +480,22 @@ public class ChatView {
         return bubble;
     }
 
+    /**
+     * Gửi tin nhắn — giờ dùng WebSocket thay vì chỉ hiển thị cục bộ.
+     * Tin nhắn sẽ được server lưu vào DB rồi broadcast lại cho tất cả
+     * thành viên (bao gồm cả sender), nên KHÔNG thêm vào UI ở đây.
+     */
     private void sendMessage() {
         String text = messageInput.getText().trim();
 
         if (!text.isEmpty()) {
-            addSentMessage(text);
+            if (wsClient != null && wsClient.isConnected() && currentConversationId > 0) {
+                // Gửi qua WebSocket → server lưu DB → broadcast về cho mọi người
+                wsClient.sendMessage(currentConversationId, text);
+            } else {
+                // Fallback: hiển thị cục bộ nếu chưa kết nối WebSocket
+                addSentMessage(text);
+            }
             messageInput.clear();
         }
     }
@@ -370,6 +537,10 @@ public class ChatView {
                 -fx-text-fill: #cc3333;
                 """);
         logoutBtn.setOnAction(e -> {
+            // Ngắt WebSocket khi logout
+            if (wsClient != null) {
+                wsClient.disconnect();
+            }
             LoginView loginView = new LoginView(stage);
             stage.setScene(loginView.createScene());
         });
