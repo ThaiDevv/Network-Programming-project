@@ -3,8 +3,10 @@ package com.server;
 import com.server.handler.auth.LoginHandler;
 import com.server.handler.auth.RegisterHandler;
 import com.server.handler.changeavatar.AvatarHandler;
+import com.server.handler.auth.ForgotPasswordHandler;
 import com.server.handler.message.ConversationHandle;
 import com.server.handler.message.GetMessagesHandler;
+import com.server.handler.message.GetConversationsHandler;
 import com.server.handler.message.SendMessageHandler;
 import com.server.websocket.ChatWebSocket;
 import com.sun.net.httpserver.HttpServer;
@@ -48,6 +50,8 @@ public class Main {
 
         server.createContext("/api/login", new LoginHandler());
         server.createContext("/api/register", new RegisterHandler());
+        server.createContext("/api/forgotpwd", new ForgotPasswordHandler());
+
         server.createContext("/api/messages", new GetMessagesHandler());
         server.createContext("/api/messages/send", new SendMessageHandler());
         server.createContext("/api/conversations/get-or-create", new ConversationHandle());
@@ -72,6 +76,7 @@ public class Main {
             exchange.sendResponseHeaders(200, fileBytes.length);
             try (OutputStream os = exchange.getResponseBody()) { os.write(fileBytes); }
         });
+        server.createContext("/api/user/conversations", new GetConversationsHandler());
         server.setExecutor(null); // creates a default executor
         server.start();
         logger.info("HTTP Server started on port {}", port);
