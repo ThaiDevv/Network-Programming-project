@@ -73,4 +73,22 @@ public class ConversationRepository {
         } catch (SQLException e) { e.printStackTrace(); }
         return list;
     }
+
+
+    public List<Long> getMemberIds(long conversationId) {
+        List<Long> memberIds = new ArrayList<>();
+        String query = "SELECT user_id FROM conversation_members WHERE conversation_id = ?";
+        try (Connection conn = Database.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(query)) {
+            pstmt.setLong(1, conversationId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    memberIds.add(rs.getLong("user_id"));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return memberIds;
+    }
 }
