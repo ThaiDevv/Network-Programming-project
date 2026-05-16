@@ -1,4 +1,9 @@
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import java.util.concurrent.CompletableFuture;
+import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -8,12 +13,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.stage.Stage;
 
-/**
- * Giao diện chat chính — đã tích hợp WebSocket realtime.
- *
- * Khi ChatView được khởi tạo, nó nhận userId và conversationId,
- * sau đó kết nối WebSocket và lắng nghe tin nhắn mới.
- */
+
 public class ChatView {
 
     private final BorderPane root;
@@ -22,13 +22,14 @@ public class ChatView {
     private VBox contactList;
     private TextField messageInput;
     private ScrollPane scrollMessages;
+    private Label headerChatName;
 
-    // WebSocket client cho realtime messaging
     private ChatWebSocketClient wsClient;
     private final long currentUserId;
     private long currentConversationId;
+    private final ChatApiClient apiClient = new ChatApiClient();
+    private final Gson gson = new Gson();
 
-    // Typing indicator label
     private Label typingLabel;
 
     private static final String BG_BLACK = "#000000";
@@ -40,10 +41,7 @@ public class ChatView {
     private static final String INPUT_BORDER = "#444444";
     private static final String ACCENT = "#7c5cfc";
 
-    /**
-     * Constructor mới: nhận userId để kết nối WebSocket.
-     * conversationId được set khi người dùng chọn một cuộc trò chuyện.
-     */
+
     public ChatView(Stage stage, long currentUserId) {
         this.stage = stage;
         this.currentUserId = currentUserId;
@@ -56,43 +54,38 @@ public class ChatView {
         root.setCenter(createCenterPanel());
         root.setRight(createRightPanel());
 
-        // Kết nối WebSocket
         connectWebSocket();
+
+
+        loadConversations();
     }
 
-    /**
-     * Constructor cũ (giữ tương thích) — dùng userId mặc định = 0.
-     */
+
     public ChatView(Stage stage) {
         this(stage, 0);
     }
 
-    // ─────────────────── WebSocket Integration ───────────────────
-
-    /**
-     * Khởi tạo và kết nối WebSocket client đến server.
-     */
     private void connectWebSocket() {
         String wsUrl = resolveWsUrl();
         wsClient = new ChatWebSocketClient(wsUrl, currentUserId);
 
-        // Callback khi nhận tin nhắn mới từ server
+
         wsClient.setOnNewMessage(this::onNewMessageReceived);
 
-        // Callback khi có người đang gõ
+
         wsClient.setOnUserTyping(this::onUserTyping);
 
-        // Callback khi kết nối thành công
+
         wsClient.setOnConnected(() -> {
             System.out.println("WebSocket connected for user " + currentUserId);
         });
 
-        // Callback khi mất kết nối
+
         wsClient.setOnDisconnected(reason -> {
             System.out.println("WebSocket disconnected: " + reason);
         });
 
-        // Callback khi có lỗi
+
         wsClient.setOnError(error -> {
             System.err.println("WebSocket error: " + error);
         });
@@ -158,11 +151,80 @@ public class ChatView {
     /**
      * Chuyển conversation đang active.
      */
-    public void setCurrentConversation(long conversationId) {
+    public void setCurrentConversation(long conversationId, String name) {
         this.currentConversationId = conversationId;
         // Xóa tin nhắn cũ trên UI
         messagesBox.getChildren().clear();
-        // TODO: Load lịch sử tin nhắn từ HTTP API (GET /api/messages?conversationId=...)
+        
+        // Update header name
+        if (headerChatName != null) {
+            headerChatName.setText(name);
+        }
+        
+        // Load lịch sử tin nhắn từ HTTP API
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                return apiClient.getMessages(conversationId);
+            } catch (Exception e) {
+                e.printStackTrace();
+                return null;
+            }
+        }).thenAccept(response -> {
+            if (response != null && response.isSuccess()) {
+                Platform.runLater(() -> {
+                    try {
+                        // Đảm bảo không ghi đè nếu người dùng đã click sang phòng khác
+                        if (this.currentConversationId == conversationId) {
+                            JsonObject json = gson.fromJson(response.rawBody(), JsonObject.class);
+                            JsonArray messages = json.getAsJsonArray("messages");
+                            for (JsonElement element : messages) {
+                                JsonObject msg = element.getAsJsonObject();
+                                long senderId = msg.get("senderId").getAsLong();
+                                String content = msg.get("content").getAsString();
+                                if (senderId == currentUserId) {
+                                    addSentMessage(content);
+                                } else {
+                                    addReceivedMessage(content);
+                                }
+                            }
+                            scrollToBottom();
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Failed to parse messages JSON");
+                    }
+                });
+            }
+        });
+    }
+
+    private void loadConversations() {
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                return apiClient.getConversations(currentUserId);
+            } catch (Exception e) {
+                e.printStackTrace();
+                return null;
+            }
+        }).thenAccept(response -> {
+            if (response != null && response.isSuccess()) {
+                Platform.runLater(() -> {
+                    contactList.getChildren().clear();
+                    try {
+                        JsonObject json = gson.fromJson(response.rawBody(), JsonObject.class);
+                        JsonArray data = json.getAsJsonArray("data");
+                        for (JsonElement element : data) {
+                            JsonObject conv = element.getAsJsonObject();
+                            long id = conv.get("conversationId").getAsLong();
+                            String name = conv.get("displayName").getAsString();
+                            String lastMsg = conv.get("lastMessage").getAsString();
+                            addContact(id, name, lastMsg, false);
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Failed to parse conversations JSON");
+                    }
+                });
+            }
+        });
     }
 
     /**
@@ -219,17 +281,15 @@ public class ChatView {
                 """.formatted(PANEL_DARK, PANEL_DARK));
         VBox.setVgrow(scrollContacts, Priority.ALWAYS);
 
-        // Temporary data for the UI prototype. Later this list should come from the server.
-        addContact("Github", "\u0110ang nh\u1eadp...", true);
-        addContact("Bob", "You: Canongocsthang", false);
-        addContact("Vua t\u00e0i x\u1ec9u", "Acc premium pornhub \u0111\u00e2y\nfb: baosaygox@gmail.com", false);
-        addContact("Nguy\u1ec5n Sun Sin", "hi", false);
+        // Không dùng dữ liệu ảo nữa
+        // addContact("Github", "Đang nhập...", true);
+        // addContact("Bob", "You: Canongocsthang", false);
 
         panel.getChildren().addAll(header, searchField, scrollContacts);
         return panel;
     }
 
-    private void addContact(String name, String lastMsg, boolean selected) {
+    private void addContact(long conversationId, String name, String lastMsg, boolean selected) {
         HBox contact = new HBox(12);
         contact.setAlignment(Pos.CENTER_LEFT);
         contact.setPadding(new Insets(12, 14, 12, 14));
@@ -280,6 +340,10 @@ public class ChatView {
                             """.formatted(radius)));
         }
 
+        contact.setOnMouseClicked(e -> {
+            setCurrentConversation(conversationId, name);
+        });
+
         contactList.getChildren().add(contact);
     }
 
@@ -300,8 +364,8 @@ public class ChatView {
         headerAvatar.setFill(Color.web("#444"));
 
         VBox headerInfo = new VBox(2);
-        Label chatName = new Label("Github");
-        chatName.setStyle("""
+        headerChatName = new Label("Chọn người để chat");
+        headerChatName.setStyle("""
                 -fx-font-size: 17px;
                 -fx-font-weight: bold;
                 -fx-text-fill: %s;
@@ -312,7 +376,7 @@ public class ChatView {
                 -fx-font-size: 12px;
                 -fx-text-fill: #4ade80;
                 """);
-        headerInfo.getChildren().addAll(chatName, chatStatus);
+        headerInfo.getChildren().addAll(headerChatName, chatStatus);
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
