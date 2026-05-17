@@ -67,7 +67,7 @@ public class ConversationRepository {
                             Conversation.ConversationType.valueOf(rs.getString("type")),
                             rs.getString("name"),
                             rs.getString("avatar_url"),
-                            rs.getLong("created_by"),
+                            rs.getObject("created_by") != null ? rs.getLong("created_by") : null,
                             rs.getTimestamp("created_at"),
                             rs.getTimestamp("last_message_at")
                     ));

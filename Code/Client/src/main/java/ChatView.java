@@ -13,6 +13,11 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.stage.Stage;
 
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+
 
 public class ChatView {
 
@@ -31,6 +36,14 @@ public class ChatView {
     private final Gson gson = new Gson();
 
     private Label typingLabel;
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "typing-scheduler");
+        t.setDaemon(true);
+        return t;
+    });
+    private ScheduledFuture<?> typingHideTask;
+    private long lastTypingSentTime = 0;
+    private static final long TYPING_THROTTLE_MS = 1000; // Chỉ gửi typing tối đa 1 lần/giây
 
     private static final String BG_BLACK = "#000000";
     private static final String PANEL_DARK = "#111111";
@@ -129,13 +142,16 @@ public class ChatView {
             typingLabel.setText("Đang gõ...");
             typingLabel.setVisible(true);
 
-            // Tự ẩn sau 3 giây
-            new Thread(() -> {
-                try {
-                    Thread.sleep(3000);
-                } catch (InterruptedException ignored) {}
-                javafx.application.Platform.runLater(() -> typingLabel.setVisible(false));
-            }).start();
+            // Hủy task ẩn cũ nếu có
+            if (typingHideTask != null && !typingHideTask.isDone()) {
+                typingHideTask.cancel(false);
+            }
+
+            // Tự ẩn sau 3 giây (dùng scheduler thay vì tạo Thread mới)
+            typingHideTask = scheduler.schedule(() ->
+                javafx.application.Platform.runLater(() -> typingLabel.setVisible(false)),
+                3, TimeUnit.SECONDS
+            );
         }
     }
 
@@ -452,10 +468,14 @@ public class ChatView {
         messageInput.setPrefHeight(48);
         HBox.setHgrow(messageInput, Priority.ALWAYS);
 
-        // Gửi typing indicator khi người dùng đang gõ
+        // Gửi typing indicator khi người dùng đang gõ (throttled: tối đa 1 lần/giây)
         messageInput.textProperty().addListener((obs, oldVal, newVal) -> {
             if (wsClient != null && wsClient.isConnected() && currentConversationId > 0) {
-                wsClient.sendTyping(currentConversationId);
+                long now = System.currentTimeMillis();
+                if (now - lastTypingSentTime >= TYPING_THROTTLE_MS) {
+                    lastTypingSentTime = now;
+                    wsClient.sendTyping(currentConversationId);
+                }
             }
         });
 

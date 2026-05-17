@@ -119,15 +119,9 @@ public class AvatarHandler implements HttpHandler {
                 logger.error("Lỗi number format", e);
                 sendResponse(exchange, 400, "{\"status\": \"error\", \"message\": \"userId phải là số nguyên\"}");
             }
-        } catch (Throwable e) { // Catch both Exception and Error for the entire method
+        } catch (Throwable e) {
             logger.error("Lỗi chưa bắt được trong handle change avatar", e);
-            
-            // Temporary: Send stack trace to client for debugging
-            java.io.StringWriter sw = new java.io.StringWriter();
-            e.printStackTrace(new java.io.PrintWriter(sw));
-            String stackTrace = sw.toString().replace("\"", "'").replace("\n", "\\n").replace("\r", "");
-            
-            sendResponse(exchange, 500, "{\"error\": \"Internal Server Error\", \"details\": \"" + stackTrace + "\"}");
+            sendResponse(exchange, 500, "{\"error\": \"Internal Server Error\"}");
         }
     }
 

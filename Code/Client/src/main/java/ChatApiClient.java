@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
 
 public class ChatApiClient {
 
-    private static final String DEFAULT_BASE_URL = "http://localhost:8080";
+    private static final String DEFAULT_BASE_URL = "http://localhost:3000";
     private static final Pattern JSON_FIELD_PATTERN = Pattern.compile(
             "\"%s\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\""
     );

@@ -8,11 +8,21 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.Random;
+import java.security.SecureRandom;
 
 public class AuthService {
     private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
-    private static final ConcurrentHashMap<String, String> passwordResetCodes = new ConcurrentHashMap<>();
+    
+    private static class ResetCodeInfo {
+        final String username;
+        final long expiryTime;
+        ResetCodeInfo(String username, long expiryTime) {
+            this.username = username;
+            this.expiryTime = expiryTime;
+        }
+    }
+    
+    private static final ConcurrentHashMap<String, ResetCodeInfo> passwordResetCodes = new ConcurrentHashMap<>();
     private final UserRepository userRepository = new UserRepository();
 
     /**
@@ -48,12 +58,13 @@ public class AuthService {
             return null; // User not found
         }
         
-        // Generate 6-digit code
-        Random rand = new Random();
+        // Generate 6-digit code using SecureRandom
+        SecureRandom rand = new SecureRandom();
         String code = String.format("%06d", rand.nextInt(1000000));
         
-        // Store in map
-        passwordResetCodes.put(code, username);
+        // Store in map with a 10-minute expiration
+        long expiry = System.currentTimeMillis() + 10 * 60 * 1000;
+        passwordResetCodes.put(code, new ResetCodeInfo(username, expiry));
         
         return code;
     }
@@ -62,10 +73,13 @@ public class AuthService {
      * Reset password using a valid code.
      */
     public boolean resetPassword(String code, String newPassword) {
-        String username = passwordResetCodes.get(code);
-        if (username == null) {
+        ResetCodeInfo info = passwordResetCodes.get(code);
+        if (info == null || System.currentTimeMillis() > info.expiryTime) {
+            passwordResetCodes.remove(code); // cleanup expired code
             return false; // Code not found or expired
         }
+        
+        String username = info.username;
         
         // Hash new password
         String newHash = BCrypt.hashpw(newPassword, BCrypt.gensalt());

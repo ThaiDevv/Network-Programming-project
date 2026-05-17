@@ -1,14 +1,17 @@
-package com.example.service;
+package com.server.service;
 
-import com.example.config.Database;
-import com.example.model.User;
+import com.server.config.Database;
+import com.server.model.User;
 import org.mindrot.jbcrypt.BCrypt;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 
 public class UserService {
+    private static final Logger logger = LoggerFactory.getLogger(UserService.class);
 
     public boolean registerUser(User user) {
         // 1. Kiểm tra xem username hoặc email đã tồn tại trong DB chưa
@@ -25,19 +28,22 @@ public class UserService {
                 return false;
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Error checking existing user", e);
             return false;
         }
-        String updateAvatarURL = "Update users set avatarURL = ? where id =?";
 
+        // 2. Insert user mới vào DB
+        String insertSql = "INSERT INTO users (username, password_hash, email, avatar_url) VALUES (?, ?, ?, ?)";
         try (Connection conn = Database.getConnection();
-                PreparedStatement updateAvatarStmt = conn.prepareStatement(updateAvatarURL)) {
-            updateAvatarStmt.setString(1, user.getAvatarUrl());
-            updateAvatarStmt.setLong(2, user.getId());
-            int rowsAffected = updateAvatarStmt.executeUpdate();
+                PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
+            insertStmt.setString(1, user.getUsername());
+            insertStmt.setString(2, user.getPasswordHash());
+            insertStmt.setString(3, user.getEmail());
+            insertStmt.setString(4, user.getAvatarUrl());
+            int rowsAffected = insertStmt.executeUpdate();
             return rowsAffected > 0;
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Error inserting new user", e);
             return false;
         }
     }

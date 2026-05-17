@@ -19,6 +19,15 @@ public class RegisterHandler implements HttpHandler {
 
     @Override
     public void handle(HttpExchange exchange) throws IOException {
+        // Xử lý CORS preflight
+        if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+            exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "POST, OPTIONS");
+            exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type");
+            exchange.sendResponseHeaders(204, -1);
+            return;
+        }
+
         if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
             sendResponse(exchange, 405, "{\"error\": \"Method Not Allowed\"}");
             return;
@@ -45,7 +54,11 @@ public class RegisterHandler implements HttpHandler {
                 }
             } catch (Exception dbEx) {
                 logger.error("Registration error", dbEx);
-                String errMsg = dbEx.getMessage() != null ? dbEx.getMessage().replace("\"", "'") : "Unknown Error";
+                String errMsg = "Registration failed";
+                // Kiểm tra lỗi trùng username/email (MySQL duplicate entry)
+                if (dbEx.getMessage() != null && dbEx.getMessage().contains("Duplicate")) {
+                    errMsg = "Username hoặc email đã tồn tại";
+                }
                 sendResponse(exchange, 400, "{\"status\": \"error\", \"message\": \"" + errMsg + "\"}");
             }
         } catch (Exception e) {

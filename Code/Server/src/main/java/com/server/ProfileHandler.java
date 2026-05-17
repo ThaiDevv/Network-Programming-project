@@ -2,6 +2,7 @@ package com.server;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.server.config.Database;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import org.slf4j.Logger;
@@ -24,7 +25,7 @@ public class ProfileHandler implements HttpHandler {
         String method = exchange.getRequestMethod();
 
         if ("OPTIONS".equalsIgnoreCase(method)) {
-            exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "https://yourdomain.com");
+            exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
             exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
             exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type, Authorization");
             exchange.sendResponseHeaders(204, -1);
@@ -59,9 +60,6 @@ public class ProfileHandler implements HttpHandler {
                 if (json.has("userId")) {
                     return json.get("userId").getAsInt() == requestedUserId;
                 }
-            }
-            if (token.contains(String.valueOf(requestedUserId))) {
-                return true;
             }
             return false;
         } catch (Exception e) {
@@ -297,7 +295,7 @@ public class ProfileHandler implements HttpHandler {
      */
     private void sendResponse(HttpExchange exchange, int status, String body) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", "application/json");
-        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "https://yourdomain.com");
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
         byte[] response = body.getBytes();
         exchange.sendResponseHeaders(status, response.length);
         try (OutputStream os = exchange.getResponseBody()) {

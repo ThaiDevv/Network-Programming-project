@@ -20,6 +20,15 @@ public class LoginHandler implements HttpHandler {
 
     @Override
     public void handle(HttpExchange exchange) throws IOException {
+        // Xử lý CORS preflight
+        if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+            exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "POST, OPTIONS");
+            exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type");
+            exchange.sendResponseHeaders(204, -1);
+            return;
+        }
+
         if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
             sendResponse(exchange, 405, "{\"error\": \"Method Not Allowed\"}");
             return;
@@ -37,16 +46,13 @@ public class LoginHandler implements HttpHandler {
             String password = json.get("password").getAsString();
 
             // Gọi logic từ Service
-            com.server.model.User user = authService.login(username, password);
+            User user = authService.login(username, password);
             if (user != null) {
                 String body = String.format(
                     "{\"status\": \"success\", \"userId\": %d, \"username\": \"%s\"}",
                     user.getId(), user.getUsername()
                 );
                 sendResponse(exchange, 200, body);
-            User user = authService.login(username, password);
-            if (user != null) {
-                sendResponse(exchange, 200, "{\"status\": \"success\", \"message\": \"Login successful\", \"userId\": " + user.getId() + "}");
             } else {
                 sendResponse(exchange, 401, "{\"status\": \"error\", \"message\": \"Invalid username or password\"}");
             }

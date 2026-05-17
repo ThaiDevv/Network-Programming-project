@@ -41,9 +41,10 @@ public class Main {
             public void handle(HttpExchange exchange) throws IOException {
                 logger.info("Received HTTP request: {} {}", exchange.getRequestMethod(), exchange.getRequestURI());
                 String response = "server worked!";
-                exchange.sendResponseHeaders(200, response.length());
+                byte[] responseBytes = response.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, responseBytes.length);
                 OutputStream os = exchange.getResponseBody();
-                os.write(response.getBytes());
+                os.write(responseBytes);
                 os.close();
             }
         });
@@ -51,6 +52,7 @@ public class Main {
         server.createContext("/api/login", new LoginHandler());
         server.createContext("/api/register", new RegisterHandler());
         server.createContext("/api/forgotpwd", new ForgotPasswordHandler());
+        server.createContext("/api/profile", new ProfileHandler());
 
         server.createContext("/api/messages", new GetMessagesHandler());
         server.createContext("/api/messages/send", new SendMessageHandler());
@@ -58,9 +60,19 @@ public class Main {
         server.createContext("/api/change-avatar", new AvatarHandler());
 
         // Phục vụ file ảnh tĩnh từ thư mục uploads/
+        // Thư mục gốc cho uploads
+        Path uploadBasePath = Paths.get("uploads").toAbsolutePath().normalize();
         server.createContext("/uploads/", exchange -> {
             String uriPath = exchange.getRequestURI().getPath();
-            Path filePath = Paths.get(uriPath.substring(1)); // bỏ dấu / đầu
+            Path filePath = Paths.get(uriPath.substring(1)).toAbsolutePath().normalize();
+
+            // Chống path traversal: đảm bảo file nằm trong thư mục uploads/
+            if (!filePath.startsWith(uploadBasePath)) {
+                byte[] forbidden = "Forbidden".getBytes();
+                exchange.sendResponseHeaders(403, forbidden.length);
+                try (OutputStream os = exchange.getResponseBody()) { os.write(forbidden); }
+                return;
+            }
 
             if (!Files.exists(filePath) || Files.isDirectory(filePath)) {
                 byte[] notFound = "Not Found".getBytes();
