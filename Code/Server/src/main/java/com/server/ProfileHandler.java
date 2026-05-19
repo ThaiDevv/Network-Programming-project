@@ -1,6 +1,5 @@
 package com.server;
 
-import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.server.config.Database;
 import com.server.tcp.ClientConnection;
@@ -14,7 +13,6 @@ import java.sql.ResultSet;
 
 public class ProfileHandler {
     private static final Logger logger = LoggerFactory.getLogger(ProfileHandler.class);
-    private final Gson gson = new Gson();
 
     public JsonObject handleTcp(JsonObject request, ClientConnection conn) {
         JsonObject response = new JsonObject();
