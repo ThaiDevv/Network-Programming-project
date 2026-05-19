@@ -4,7 +4,6 @@ import com.server.model.User;
 import com.server.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import org.mindrot.jbcrypt.BCrypt;
 
 import java.lang.reflect.Field;

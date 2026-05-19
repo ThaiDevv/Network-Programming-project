@@ -34,6 +34,7 @@ public class ChatView {
     private long currentConversationId;
     private final ChatTcpClient apiClient = ChatTcpClient.getInstance();
     private final Gson gson = new Gson();
+    private final java.util.Map<Long, Label> contactLastMsgLabels = new java.util.HashMap<>();
 
     private Label typingLabel;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -130,7 +131,13 @@ public class ChatView {
             scrollToBottom();
         }
 
-        // TODO: Cập nhật last message preview trên contact list
+        // Cập nhật last message preview trên contact list
+        Platform.runLater(() -> {
+            Label msgLabel = contactLastMsgLabels.get(conversationId);
+            if (msgLabel != null) {
+                msgLabel.setText(content);
+            }
+        });
     }
 
     /**
@@ -225,6 +232,7 @@ public class ChatView {
             if (response != null && response.isSuccess()) {
                 Platform.runLater(() -> {
                     contactList.getChildren().clear();
+                    contactLastMsgLabels.clear();
                     try {
                         JsonObject json = gson.fromJson(response.rawBody(), JsonObject.class);
                         JsonArray data = json.getAsJsonArray("conversations");
@@ -331,6 +339,8 @@ public class ChatView {
                 -fx-font-size: 12px;
                 -fx-text-fill: %s;
                 """.formatted(selected ? "#dddddd" : TEXT_MUTED));
+
+        contactLastMsgLabels.put(conversationId, msgLabel);
 
         info.getChildren().addAll(nameLabel, msgLabel);
         contact.getChildren().addAll(avatar, info);
