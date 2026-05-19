@@ -1,4 +1,4 @@
-﻿package com.server.service;
+package com.server.service;
 
 import com.server.config.Database;
 import org.slf4j.Logger;
@@ -6,7 +6,6 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 
 public class AvatarService {
     private static final Logger logger = LoggerFactory.getLogger(AvatarService.class);

@@ -3,20 +3,18 @@ package com.server.service;
 import com.server.model.User;
 import com.server.repository.UserRepository;
 import org.mindrot.jbcrypt.BCrypt;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Random;
 
 public class AuthService {
-    private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
     private static final ConcurrentHashMap<String, String> passwordResetCodes = new ConcurrentHashMap<>();
     private final UserRepository userRepository = new UserRepository();
 
     /**
      * Xác thực user theo username và password.
+     * 
      * @return User nếu đăng nhập thành công, null nếu thất bại.
      */
     public User login(String username, String password) {
@@ -47,14 +45,14 @@ public class AuthService {
         if (user == null) {
             return null; // User not found
         }
-        
+
         // Generate 6-digit code
         Random rand = new Random();
         String code = String.format("%06d", rand.nextInt(1000000));
-        
+
         // Store in map
         passwordResetCodes.put(code, username);
-        
+
         return code;
     }
 
@@ -66,10 +64,10 @@ public class AuthService {
         if (username == null) {
             return false; // Code not found or expired
         }
-        
+
         // Hash new password
         String newHash = BCrypt.hashpw(newPassword, BCrypt.gensalt());
-        
+
         // Update DB
         boolean success = userRepository.updatePassword(username, newHash);
         if (success) {

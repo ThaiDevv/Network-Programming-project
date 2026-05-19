@@ -13,6 +13,11 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.stage.Stage;
 
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+
 
 public class ChatView {
 
@@ -24,13 +29,22 @@ public class ChatView {
     private ScrollPane scrollMessages;
     private Label headerChatName;
 
-    private ChatWebSocketClient wsClient;
+    private ChatTcpClient tcpClient;
     private final long currentUserId;
     private long currentConversationId;
-    private final ChatApiClient apiClient = new ChatApiClient();
+    private final ChatTcpClient apiClient = ChatTcpClient.getInstance();
     private final Gson gson = new Gson();
+    private final java.util.Map<Long, Label> contactLastMsgLabels = new java.util.HashMap<>();
 
     private Label typingLabel;
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "typing-scheduler");
+        t.setDaemon(true);
+        return t;
+    });
+    private ScheduledFuture<?> typingHideTask;
+    private long lastTypingSentTime = 0;
+    private static final long TYPING_THROTTLE_MS = 1000; // Chỉ gửi typing tối đa 1 lần/giây
 
     private static final String BG_BLACK = "#000000";
     private static final String PANEL_DARK = "#111111";
@@ -54,7 +68,7 @@ public class ChatView {
         root.setCenter(createCenterPanel());
         root.setRight(createRightPanel());
 
-        connectWebSocket();
+        connectTcp();
 
 
         loadConversations();
@@ -65,36 +79,36 @@ public class ChatView {
         this(stage, 0);
     }
 
-    private void connectWebSocket() {
-        String wsUrl = resolveWsUrl();
-        wsClient = new ChatWebSocketClient(wsUrl, currentUserId);
+    private void connectTcp() {
+        
+        tcpClient = ChatTcpClient.getInstance();
 
 
-        wsClient.setOnNewMessage(this::onNewMessageReceived);
+        tcpClient.setOnNewMessage(this::onNewMessageReceived);
 
 
-        wsClient.setOnUserTyping(this::onUserTyping);
+        tcpClient.setOnUserTyping(this::onUserTyping);
 
 
-        wsClient.setOnConnected(() -> {
-            System.out.println("WebSocket connected for user " + currentUserId);
+        tcpClient.setOnConnected(() -> {
+            System.out.println("TCP socket connected for user " + currentUserId);
         });
 
 
-        wsClient.setOnDisconnected(reason -> {
-            System.out.println("WebSocket disconnected: " + reason);
+        tcpClient.setOnDisconnected(reason -> {
+            System.out.println("TCP socket disconnected: " + reason);
         });
 
 
-        wsClient.setOnError(error -> {
-            System.err.println("WebSocket error: " + error);
+        tcpClient.setOnError(error -> {
+            System.err.println("TCP socket error: " + error);
         });
 
-        wsClient.connectAsync();
+        tcpClient.join(currentUserId);
     }
 
     /**
-     * Xử lý khi nhận được tin nhắn mới qua WebSocket.
+     * Xử lý khi nhận được tin nhắn mới qua TCP.
      * Chỉ hiển thị nếu tin nhắn thuộc conversation đang mở.
      */
     private void onNewMessageReceived(JsonObject json) {
@@ -117,7 +131,13 @@ public class ChatView {
             scrollToBottom();
         }
 
-        // TODO: Cập nhật last message preview trên contact list
+        // Cập nhật last message preview trên contact list
+        Platform.runLater(() -> {
+            Label msgLabel = contactLastMsgLabels.get(conversationId);
+            if (msgLabel != null) {
+                msgLabel.setText(content);
+            }
+        });
     }
 
     /**
@@ -129,13 +149,16 @@ public class ChatView {
             typingLabel.setText("Đang gõ...");
             typingLabel.setVisible(true);
 
-            // Tự ẩn sau 3 giây
-            new Thread(() -> {
-                try {
-                    Thread.sleep(3000);
-                } catch (InterruptedException ignored) {}
-                javafx.application.Platform.runLater(() -> typingLabel.setVisible(false));
-            }).start();
+            // Hủy task ẩn cũ nếu có
+            if (typingHideTask != null && !typingHideTask.isDone()) {
+                typingHideTask.cancel(false);
+            }
+
+            // Tự ẩn sau 3 giây (dùng scheduler thay vì tạo Thread mới)
+            typingHideTask = scheduler.schedule(() ->
+                javafx.application.Platform.runLater(() -> typingLabel.setVisible(false)),
+                3, TimeUnit.SECONDS
+            );
         }
     }
 
@@ -161,7 +184,7 @@ public class ChatView {
             headerChatName.setText(name);
         }
         
-        // Load lịch sử tin nhắn từ HTTP API
+        // Load lịch sử tin nhắn từ TCP connection
         CompletableFuture.supplyAsync(() -> {
             try {
                 return apiClient.getMessages(conversationId);
@@ -209,9 +232,10 @@ public class ChatView {
             if (response != null && response.isSuccess()) {
                 Platform.runLater(() -> {
                     contactList.getChildren().clear();
+                    contactLastMsgLabels.clear();
                     try {
                         JsonObject json = gson.fromJson(response.rawBody(), JsonObject.class);
-                        JsonArray data = json.getAsJsonArray("data");
+                        JsonArray data = json.getAsJsonArray("conversations");
                         for (JsonElement element : data) {
                             JsonObject conv = element.getAsJsonObject();
                             long id = conv.get("conversationId").getAsLong();
@@ -230,13 +254,7 @@ public class ChatView {
     /**
      * Xác định WebSocket URL dựa trên env hoặc mặc định localhost.
      */
-    private String resolveWsUrl() {
-        String envUrl = System.getenv("CHATAPP_WS_URL");
-        if (envUrl != null && !envUrl.isBlank()) return envUrl;
-        String propUrl = System.getProperty("chatapp.ws.url");
-        if (propUrl != null && !propUrl.isBlank()) return propUrl;
-        return "ws://localhost:8887";
-    }
+    
 
     // ─────────────────── UI Components (giữ nguyên giao diện cũ) ───────────────────
 
@@ -321,6 +339,8 @@ public class ChatView {
                 -fx-font-size: 12px;
                 -fx-text-fill: %s;
                 """.formatted(selected ? "#dddddd" : TEXT_MUTED));
+
+        contactLastMsgLabels.put(conversationId, msgLabel);
 
         info.getChildren().addAll(nameLabel, msgLabel);
         contact.getChildren().addAll(avatar, info);
@@ -452,10 +472,14 @@ public class ChatView {
         messageInput.setPrefHeight(48);
         HBox.setHgrow(messageInput, Priority.ALWAYS);
 
-        // Gửi typing indicator khi người dùng đang gõ
+        // Gửi typing indicator khi người dùng đang gõ (throttled: tối đa 1 lần/giây)
         messageInput.textProperty().addListener((obs, oldVal, newVal) -> {
-            if (wsClient != null && wsClient.isConnected() && currentConversationId > 0) {
-                wsClient.sendTyping(currentConversationId);
+            if (tcpClient != null && tcpClient.isConnected() && currentConversationId > 0) {
+                long now = System.currentTimeMillis();
+                if (now - lastTypingSentTime >= TYPING_THROTTLE_MS) {
+                    lastTypingSentTime = now;
+                    tcpClient.sendTyping(currentConversationId, currentUserId, true);
+                }
             }
         });
 
@@ -545,7 +569,7 @@ public class ChatView {
     }
 
     /**
-     * Gửi tin nhắn — giờ dùng WebSocket thay vì chỉ hiển thị cục bộ.
+     * Gửi tin nhắn — giờ dùng TCP thay vì chỉ hiển thị cục bộ.
      * Tin nhắn sẽ được server lưu vào DB rồi broadcast lại cho tất cả
      * thành viên (bao gồm cả sender), nên KHÔNG thêm vào UI ở đây.
      */
@@ -553,11 +577,11 @@ public class ChatView {
         String text = messageInput.getText().trim();
 
         if (!text.isEmpty()) {
-            if (wsClient != null && wsClient.isConnected() && currentConversationId > 0) {
-                // Gửi qua WebSocket → server lưu DB → broadcast về cho mọi người
-                wsClient.sendMessage(currentConversationId, text);
+            if (tcpClient != null && tcpClient.isConnected() && currentConversationId > 0) {
+                // Gửi qua TCP → server lưu DB → broadcast về cho mọi người
+                tcpClient.sendMessage(currentConversationId, currentUserId, text);
             } else {
-                // Fallback: hiển thị cục bộ nếu chưa kết nối WebSocket
+                // Fallback: hiển thị cục bộ nếu chưa kết nối TCP
                 addSentMessage(text);
             }
             messageInput.clear();
@@ -601,9 +625,9 @@ public class ChatView {
                 -fx-text-fill: #cc3333;
                 """);
         logoutBtn.setOnAction(e -> {
-            // Ngắt WebSocket khi logout
-            if (wsClient != null) {
-                wsClient.disconnect();
+            // Ngắt TCP khi logout
+            if (tcpClient != null) {
+                tcpClient.disconnect();
             }
             LoginView loginView = new LoginView(stage);
             stage.setScene(loginView.createScene());
